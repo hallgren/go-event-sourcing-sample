@@ -261,20 +261,22 @@ serializer.RegisterTypes(&Person{}, func() interface{} { return &Born{}})
 
 The repository expose four possibilities to subscribe to events in realtime as they are saved to the repository.
 
-`SubscriberAll(func (e Event)) *Subscription` all event.
+`SubscriberAll(func (e Event)) (*Subscription, error)` all event.
 
-`SubscriberAggregateType(func (e Event), aggregates ...Aggregate) *Subscription` events bound to specific aggregate types. 
+`SubscriberAggregateType(func (e Event), aggregates ...Aggregate) (*Subscription, error)` events bound to specific aggregate types. 
  
-`SubscriberSpecificEvent(func (e Event), events ...interface{}) *Subscription` specific events. There are no restrictions that the events need
+`SubscriberSpecificEvent(func (e Event), events ...interface{}) (*Subscription, error)` specific events. There are no restrictions that the events need
 to come from the same aggregate, you can mix and match as you please.
 
-`SubscriberSpecificAggregate(func (e Event), events ...Aggregate) *Subscription` events bound to specific aggregate based on type and identity. This makes it possible to get events pinpointed to one specific aggregate instance. 
+`SubscriberSpecificAggregate(func (e Event), events ...Aggregate) (*Subscription, error)` events bound to specific aggregate based on type and identity. This makes it possible to get events pinpointed to one specific aggregate instance. 
 
 The subscription is realtime and events that are saved before the call to one of the subscribers will not be exposed via the `func(e Event)` function. If the application 
 depends on this functionality make sure to call Subscribe() function on the subscriber before storing events in the repository. 
 
 The event subscription enables the application to make use of the reactive patterns and to make it more decoupled. Check out the [Reactive Manifesto](https://www.reactivemanifesto.org/) 
 for more detailed information. 
+
+If the application is in no need of realtime subscription the repository could be created with the `eventsourcing.NewRepositoryNoEventStream(eventStore EventStore, snapshot *SnapshotHandler) *Repository` function. All subscriber methods on the created repository will return error `eventsourcing.ErrNoEventStream`.
 
 Example on how to set up the event subscription and consume the event `FrequentFlierAccountCreated`
 
@@ -283,7 +285,7 @@ Example on how to set up the event subscription and consume the event `FrequentF
 repo := eventsourcing.NewRepository(memory.Create(), nil)
 
 // subscriber that will trigger on every saved events
-s := repo.SubscriberAll(func(e eventsourcing.Event) {
+s, _ := repo.SubscriberAll(func(e eventsourcing.Event) {
     switch e := event.Data.(type) {
         case *FrequentFlierAccountCreated:
             // e now have type info

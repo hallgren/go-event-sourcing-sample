@@ -126,7 +126,10 @@ func TestSubscriptionAllEvent(t *testing.T) {
 		counter++
 	}
 	repo := eventsourcing.NewRepository(memory.Create(), nil)
-	s := repo.SubscriberAll(f)
+	s, err := repo.SubscriberAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.Subscribe()
 	defer s.Unsubscribe()
 
@@ -153,7 +156,10 @@ func TestSubscriptionSpecificEvent(t *testing.T) {
 		counter++
 	}
 	repo := eventsourcing.NewRepository(memory.Create(), nil)
-	s := repo.SubscriberSpecificEvent(f, &Born{}, &AgedOneYear{})
+	s, err := repo.SubscriberSpecificEvent(f, &Born{}, &AgedOneYear{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.Subscribe()
 	defer s.Unsubscribe()
 
@@ -170,7 +176,7 @@ func TestSubscriptionSpecificEvent(t *testing.T) {
 		t.Fatal("could not save aggregate")
 	}
 	if counter != 4 {
-		t.Errorf("No global events was received from the stream, got %q", counter)
+		t.Errorf("No global events was received from the stream, got %d", counter)
 	}
 }
 
@@ -180,7 +186,10 @@ func TestSubscriptionAggregateType(t *testing.T) {
 		counter++
 	}
 	repo := eventsourcing.NewRepository(memory.Create(), nil)
-	s := repo.SubscriberAggregateType(f, &Person{})
+	s, err := repo.SubscriberAggregateType(f, &Person{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.Subscribe()
 	defer s.Unsubscribe()
 
@@ -212,7 +221,10 @@ func TestSubscriptionSpecificAggregate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := repo.SubscriberSpecificAggregate(f, person)
+	s, err := repo.SubscriberSpecificAggregate(f, person)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.Subscribe()
 	defer s.Unsubscribe()
 
@@ -260,19 +272,25 @@ func TestEventChainDoesNotHang(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := repo.SubscriberSpecificAggregate(f, person)
+	s, err := repo.SubscriberSpecificAggregate(f, person)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.Subscribe()
 	defer s.Unsubscribe()
 
 	// subscribe to all events and filter out AgedOneYear
 	ageCounter := 0
-	s2 := repo.SubscriberAll(func(e eventsourcing.Event) {
+	s2, err := repo.SubscriberAll(func(e eventsourcing.Event) {
 		switch e.Data.(type) {
 		case *AgedOneYear:
 			// will match three times on the initial person and one each on the resulting AgedOneYear event
 			ageCounter++
 		}
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	s2.Subscribe()
 	defer s2.Unsubscribe()
 
@@ -289,4 +307,30 @@ func TestEventChainDoesNotHang(t *testing.T) {
 	if ageCounter != 6 {
 		t.Errorf("wrong number in ageCounter expected 6, got %v", ageCounter)
 	}
+}
+
+func TestSubscriptionNoEventStream(t *testing.T) {
+	repo := eventsourcing.NewRepositoryNoEventStream(memory.Create(), nil)
+
+	counter := 0
+	f := func(e eventsourcing.Event) {
+		counter++
+	}
+	_, err := repo.SubscriberAll(f)
+	if err != eventsourcing.ErrNoEventStream {
+		t.Fatal("expected no event stream error")
+	}
+	_, err = repo.SubscriberAggregateType(f, nil)
+	if err != eventsourcing.ErrNoEventStream {
+		t.Fatal("expected no event stream error")
+	}
+	_, err = repo.SubscriberSpecificAggregate(f, nil)
+	if err != eventsourcing.ErrNoEventStream {
+		t.Fatal("expected no event stream error")
+	}
+	_, err = repo.SubscriberSpecificEvent(f, nil)
+	if err != eventsourcing.ErrNoEventStream {
+		t.Fatal("expected no event stream error")
+	}
+
 }

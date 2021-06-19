@@ -30,11 +30,22 @@ var ErrSnapshotNotFound = errors.New("snapshot not found")
 // ErrAggregateNotFound returns if snapshot or event not found for aggregate
 var ErrAggregateNotFound = errors.New("aggregate not found")
 
+// ErrNoEventStream returns if no event initialized when repository is created
+var ErrNoEventStream = errors.New("no event stream")
+
 // Repository is the returned instance from the factory function
 type Repository struct {
-	*EventStream
-	eventStore EventStore
-	snapshot   *SnapshotHandler
+	eventStream *EventStream
+	eventStore  EventStore
+	snapshot    *SnapshotHandler
+}
+
+// NewRepositoryNoEventStream factory function with no event stream
+func NewRepositoryNoEventStream(eventStore EventStore, snapshot *SnapshotHandler) *Repository {
+	return &Repository{
+		eventStore: eventStore,
+		snapshot:   snapshot,
+	}
 }
 
 // NewRepository factory function
@@ -42,7 +53,7 @@ func NewRepository(eventStore EventStore, snapshot *SnapshotHandler) *Repository
 	return &Repository{
 		eventStore:  eventStore,
 		snapshot:    snapshot,
-		EventStream: NewEventStream(),
+		eventStream: NewEventStream(),
 	}
 }
 
@@ -54,8 +65,10 @@ func (r *Repository) Save(aggregate Aggregate) error {
 	if err != nil {
 		return err
 	}
-	// publish the saved events to subscribers
-	r.Update(*root, root.Events())
+	// publish the saved events to subscribers on the event stream
+	if r.eventStream != nil {
+		r.eventStream.Update(*root, root.Events())
+	}
 
 	// update the internal aggregate state
 	root.update()
@@ -97,6 +110,42 @@ func (r *Repository) Get(id string, aggregate Aggregate) error {
 	// apply the event on the aggregate
 	root.BuildFromHistory(aggregate, events)
 	return nil
+}
+
+// SubscriberAll bind the f function to be called on all events
+// returns error if no event stream
+func (r *Repository) SubscriberAll(f func(e Event)) (*Subscription, error) {
+	if r.eventStream == nil {
+		return nil, ErrNoEventStream
+	}
+	return r.eventStream.SubscriberAll(f), nil
+}
+
+// SubscriberSpecificAggregate bind the f function to be called on events that belongs to aggregate based on type and ID
+// returns error if no event stream
+func (r *Repository) SubscriberSpecificAggregate(f func(e Event), aggregates ...Aggregate) (*Subscription, error) {
+	if r.eventStream == nil {
+		return nil, ErrNoEventStream
+	}
+	return r.eventStream.SubscriberSpecificAggregate(f, aggregates...), nil
+}
+
+// SubscriberAggregateType bind the f function to be called on events on the aggregate type
+// returns error if no event stream
+func (r *Repository) SubscriberAggregateType(f func(e Event), aggregates ...Aggregate) (*Subscription, error) {
+	if r.eventStream == nil {
+		return nil, ErrNoEventStream
+	}
+	return r.eventStream.SubscriberAggregateType(f, aggregates...), nil
+}
+
+// SubscriberSpecificEvent bind the f function to be called on specific events
+// returns error if no event stream
+func (r *Repository) SubscriberSpecificEvent(f func(e Event), events ...interface{}) (*Subscription, error) {
+	if r.eventStream == nil {
+		return nil, ErrNoEventStream
+	}
+	return r.eventStream.SubscriberSpecificEvent(f, events...), nil
 }
 
 // GlobalEvents will return count events in order globally from the start position
